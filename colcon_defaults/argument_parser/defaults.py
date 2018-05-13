@@ -4,8 +4,9 @@
 import os
 from pathlib import Path
 
-from colcon_core.argument_parser import ArgumentParserDecorator
 from colcon_core.argument_parser import ArgumentParserDecoratorExtensionPoint
+from colcon_core.argument_parser.destination_collector \
+    import DestinationCollectorDecorator
 from colcon_core.environment_variable import EnvironmentVariable
 from colcon_core.location import get_config_path
 from colcon_core.logging import colcon_logger
@@ -36,8 +37,8 @@ class DefaultArgumentsArgumentParserDecorator(
         return DefaultArgumentsDecorator(parser)
 
 
-class DefaultArgumentsDecorator(ArgumentParserDecorator):
-    """Collect argument destinations and provide custom default values."""
+class DefaultArgumentsDecorator(DestinationCollectorDecorator):
+    """Provide custom default values for command line arguments."""
 
     def __init__(self, parser):  # noqa: D107
         # avoid setting members directly, the base class overrides __setattr__
@@ -48,18 +49,7 @@ class DefaultArgumentsDecorator(ArgumentParserDecorator):
                 DEFAULTS_FILE_ENVIRONMENT_VARIABLE.name,
                 get_config_path() / 'defaults.yaml')),
             _parsers={},
-            _argument_names=[],
         )
-
-    def add_argument(self, *args, **kwargs):
-        """Collect argument destinations."""
-        argument = self._parser.add_argument(*args, **kwargs)
-
-        # avoid documenting these configuration options
-        if argument.dest not in ('help', 'verb_name'):
-            self._argument_names.append(argument.dest)
-
-        return argument
 
     def add_parser(self, *args, **kwargs):
         """Collect association of subparsers to their name."""
@@ -101,10 +91,10 @@ class DefaultArgumentsDecorator(ArgumentParserDecorator):
             if group is not None:
                 name = group + '.' + name
 
-            if k in self._argument_names:
+            if k in self.get_destinations().keys():
                 continue
             for d in self._nested_decorators:
-                if k in d._argument_names:
+                if k in d.get_destinations().keys():
                     break
                 if k in d._parsers:
                     v = data[k]
@@ -125,14 +115,14 @@ class DefaultArgumentsDecorator(ArgumentParserDecorator):
     def _set_parser_defaults(self, data):
         defaults = {}
         # collect defaults for all arguments known to this parser
-        for argument_name in self._argument_names:
+        for argument_name, destination in self.get_destinations().items():
             if argument_name in data:
-                defaults[argument_name] = data[argument_name]
+                defaults[destination] = data[argument_name]
         # also consider  nested parsers like groups
         for d in self._nested_decorators:
-            for argument_name in d._argument_names:
+            for argument_name, destination in d.get_destinations().items():
                 if argument_name in data:
-                    defaults[argument_name] = data[argument_name]
+                    defaults[destination] = data[argument_name]
         self._parser.set_defaults(**defaults)
 
         # set defaults on all nested parsers based on their prefix
