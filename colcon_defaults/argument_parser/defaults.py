@@ -108,7 +108,7 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
                             data[k], group=k)
                     break
             else:
-                logger.warn("Unknown configuration option '%s'", name)
+                # ignore unknown configuration option
                 del data[k]
         pass
 
