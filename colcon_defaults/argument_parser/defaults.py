@@ -53,8 +53,9 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
 
     def add_parser(self, *args, **kwargs):
         """Collect association of subparsers to their name."""
-        subparser = super(DefaultArgumentsDecorator, self).add_parser(
+        subparser = super().add_parser(
             *args, **kwargs)
+        assert args[0] not in self._parsers
         self._parsers[args[0]] = subparser
         return subparser
 
@@ -62,6 +63,7 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
         """Overwrite default values based on global configuration."""
         data = self._get_defaults_values(self._config_path)
         self._filter_valid_default_values(data)
+        logger.debug('Setting default values: {data}'.format_map(locals()))
         self._set_parser_defaults(data)
         return self._parser.parse_args(*args, **kwargs)
 
@@ -110,7 +112,6 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
             else:
                 # ignore unknown configuration option
                 del data[k]
-        pass
 
     def _set_parser_defaults(self, data):
         defaults = {}
@@ -118,7 +119,7 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
         for argument_name, destination in self.get_destinations().items():
             if argument_name in data:
                 defaults[destination] = data[argument_name]
-        # also consider  nested parsers like groups
+        # also consider nested parsers like groups
         for d in self._nested_decorators:
             for argument_name, destination in d.get_destinations().items():
                 if argument_name in data:
