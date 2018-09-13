@@ -79,7 +79,7 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
             return {}
 
         if not isinstance(data, dict):
-            logger.warn(
+            logger.warning(
                 "Skipping metadata file '%s' since it doesn't contain a dict" %
                 path.absolute())
             return {}
@@ -101,7 +101,7 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
                 if k in d._parsers:
                     v = data[k]
                     if not isinstance(v, dict):
-                        logger.warn(
+                        logger.warning(
                             "Configuration option '%s' should be a dictionary",
                             name)
                         del data[k]
