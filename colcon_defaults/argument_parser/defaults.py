@@ -72,6 +72,7 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
             return {}
 
         content = path.read_text()
+        content = self._replace_default_variables(content)
         data = yaml.safe_load(content)
         if data is None:
             logger.info(
@@ -86,6 +87,15 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
         logger.info(
             "Using configuration from '%s'" % path.absolute())
         return data
+
+    def _replace_default_variables(self, content):
+        # Supported variables: current work directory
+        default_variables = {
+            '$CWD': os.getenv('CWD', os.getcwd()),
+        }
+        for k, v in default_variables.items():
+            content = content.replace(k, v)
+        return content
 
     def _filter_valid_default_values(self, data, group=None):
         for k in sorted(data.keys()):
