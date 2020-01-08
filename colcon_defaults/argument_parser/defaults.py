@@ -1,9 +1,10 @@
-# Copyright 2016-2018 Dirk Thomas
+# Copyright 2016-2020 Dirk Thomas
 # Licensed under the Apache License, Version 2.0
 
 import os
 from pathlib import Path
 
+from colcon_core.argument_default import wrap_default_value
 from colcon_core.argument_parser import ArgumentParserDecoratorExtensionPoint
 from colcon_core.argument_parser.destination_collector \
     import DestinationCollectorDecorator
@@ -118,12 +119,14 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
         # collect defaults for all arguments known to this parser
         for argument_name, destination in self.get_destinations().items():
             if argument_name in data:
-                defaults[destination] = data[argument_name]
+                defaults[destination] = wrap_default_value(
+                    data[argument_name])
         # also consider nested parsers like groups
         for d in self._nested_decorators:
             for argument_name, destination in d.get_destinations().items():
                 if argument_name in data:
-                    defaults[destination] = data[argument_name]
+                    defaults[destination] = wrap_default_value(
+                        data[argument_name])
         self._parser.set_defaults(**defaults)
 
         # set defaults on all nested parsers based on their prefix
