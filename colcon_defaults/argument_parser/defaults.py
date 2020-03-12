@@ -6,6 +6,7 @@ from pathlib import Path
 
 from colcon_core.argument_default import wrap_default_value
 from colcon_core.argument_parser import ArgumentParserDecoratorExtensionPoint
+from colcon_core.argument_parser import SuppressUsageOutput
 from colcon_core.argument_parser.destination_collector \
     import DestinationCollectorDecorator
 from colcon_core.environment_variable import EnvironmentVariable
@@ -50,6 +51,7 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
                 DEFAULTS_FILE_ENVIRONMENT_VARIABLE.name,
                 get_config_path() / 'defaults.yaml')),
             _parsers={},
+            _subparsers=[],
         )
 
     def add_parser(self, *args, **kwargs):
@@ -60,12 +62,50 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
         self._parsers[args[0]] = subparser
         return subparser
 
+    def add_subparsers(self, *args, **kwargs):
+        """Collect all subparsers."""
+        subparser = super().add_subparsers(*args, **kwargs)
+        self._subparsers.append(subparser)
+        return subparser
+
     def parse_args(self, *args, **kwargs):
         """Overwrite default values based on global configuration."""
+        # mapping of all verbs to parsers
+        def collect_parsers_by_verb(root, parsers, parent_verbs=()):
+            for sp in root._subparsers:
+                for name, p in sp._parsers.items():
+                    verbs = parent_verbs + (name, )
+                    parsers[verbs] = p
+                    collect_parsers_by_verb(p, parsers, verbs)
+        all_parsers = {}
+        collect_parsers_by_verb(self, all_parsers)
+
+        # collect passed verbs to determine relevant configuration options
+        with SuppressUsageOutput([self._parser] + list(all_parsers.values())):
+            known_args, _ = self._parser.parse_known_args(*args, **kwargs)
+
         data = self._get_defaults_values(self._config_path)
-        self._filter_valid_default_values(data)
-        logger.debug('Setting default values: {data}'.format_map(locals()))
-        self._set_parser_defaults(data)
+
+        # determine data keys and parsers for passed verbs (including the root)
+        keys_and_parsers = []
+        nested_verbs = ()
+        parser = self
+        while True:
+            keys_and_parsers.append(('.'.join(nested_verbs), parser))
+            if len(parser._recursive_decorators) != 1:
+                break
+            if not hasattr(parser._recursive_decorators[0], 'dest'):
+                break
+            verb = getattr(
+                known_args, parser._recursive_decorators[0].dest, None)
+            if verb is None:
+                break
+            nested_verbs = nested_verbs + (verb, )
+            parser = all_parsers[nested_verbs]
+
+        for key, parser in keys_and_parsers:
+            parser._set_parser_defaults(data.get(key, {}), parser_name=key)
+
         return self._parser.parse_args(*args, **kwargs)
 
     def _get_defaults_values(self, path):
@@ -88,49 +128,27 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
             "Using configuration from '%s'" % path.absolute())
         return data
 
-    def _filter_valid_default_values(self, data, group=None):
-        for k in sorted(data.keys()):
-            name = k
-            if group is not None:
-                name = group + '.' + name
+    def _set_parser_defaults(self, data, *, parser_name):
+        if not isinstance(data, dict):
+            logger.warning(
+                "Configuration option '{parser_name}' should be a dictionary"
+                .format_map(locals()))
+            return
 
-            if k in self.get_destinations().keys():
-                continue
-            for d in self._nested_decorators:
-                if k in d.get_destinations().keys():
-                    break
-                if k in d._parsers:
-                    v = data[k]
-                    if not isinstance(v, dict):
-                        logger.warning(
-                            "Configuration option '%s' should be a dictionary",
-                            name)
-                        del data[k]
-                    else:
-                        d._parsers[k]._filter_valid_default_values(
-                            data[k], group=k)
-                    break
-            else:
-                # ignore unknown configuration option
-                del data[k]
-
-    def _set_parser_defaults(self, data):
         defaults = {}
-        # collect defaults for all arguments known to this parser
-        for argument_name, destination in self.get_destinations().items():
-            if argument_name in data:
-                defaults[destination] = wrap_default_value(
-                    data[argument_name])
-        # also consider nested parsers like groups
-        for d in self._nested_decorators:
-            for argument_name, destination in d.get_destinations().items():
-                if argument_name in data:
-                    defaults[destination] = wrap_default_value(
-                        data[argument_name])
-        self._parser.set_defaults(**defaults)
+        destinations = self.get_destinations(recursive=False)
+        for key, dest in destinations.items():
+            if key in data:
+                defaults[dest] = wrap_default_value(data[key])
+        unknown_keys = data.keys() - destinations.keys()
+        if unknown_keys:
+            unknown_keys_str = ', '.join(sorted(unknown_keys))
+            logger.warn(
+                "Skipping unknown keys from '{self._config_path}' for "
+                "'{parser_name}': {unknown_keys_str}".format_map(locals()))
 
-        # set defaults on all nested parsers based on their prefix
-        for d in self._nested_decorators:
-            for prefix, parser in d._parsers.items():
-                if prefix in data:
-                    parser._set_parser_defaults(data[prefix])
+        if defaults:
+            logger.info(
+                "Setting default values for parser '{parser_name}': {defaults}"
+                .format_map(locals()))
+            self._parser.set_defaults(**defaults)
