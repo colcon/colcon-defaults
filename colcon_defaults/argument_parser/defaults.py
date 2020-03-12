@@ -86,11 +86,12 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
 
         data = self._get_defaults_values(self._config_path)
 
-        # determine data keys and parsers for passed verbs
+        # determine data keys and parsers for passed verbs (including the root)
         keys_and_parsers = []
         nested_verbs = ()
         parser = self
         while True:
+            keys_and_parsers.append(('.'.join(nested_verbs), parser))
             if len(parser._recursive_decorators) != 1:
                 break
             if not hasattr(parser._recursive_decorators[0], 'dest'):
@@ -101,7 +102,6 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
                 break
             nested_verbs = nested_verbs + (verb, )
             parser = all_parsers[nested_verbs]
-            keys_and_parsers.append(('.'.join(nested_verbs), parser))
 
         for key, parser in keys_and_parsers:
             parser._set_parser_defaults(data.get(key, {}), parser_name=key)
