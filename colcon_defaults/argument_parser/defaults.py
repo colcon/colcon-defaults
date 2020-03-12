@@ -136,9 +136,16 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
             return
 
         defaults = {}
-        for key, dest in self.get_destinations(recursive=False).items():
+        destinations = self.get_destinations(recursive=False)
+        for key, dest in destinations.items():
             if key in data:
                 defaults[dest] = wrap_default_value(data[key])
+        unknown_keys = data.keys() - destinations.keys()
+        if unknown_keys:
+            unknown_keys_str = ', '.join(sorted(unknown_keys))
+            logger.warn(
+                "Skipping unknown keys from '{self._config_path}' for "
+                "'{parser_name}': {unknown_keys_str}".format_map(locals()))
 
         if defaults:
             logger.info(
