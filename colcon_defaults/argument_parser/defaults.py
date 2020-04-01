@@ -52,6 +52,7 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
                 get_config_path() / 'defaults.yaml')),
             _parsers={},
             _subparsers=[],
+            _argument_types={},
         )
 
     def add_parser(self, *args, **kwargs):
@@ -67,6 +68,25 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
         subparser = super().add_subparsers(*args, **kwargs)
         self._subparsers.append(subparser)
         return subparser
+
+    def add_argument(self, *args, **kwargs):
+        """Determine the type of the argument."""
+        argument = super().add_argument(*args, **kwargs)
+
+        type_ = None
+        if kwargs.get('type') in (str, str.lstrip):
+            type_ = str
+        elif kwargs.get('type') == int:
+            type_ = int
+        elif kwargs.get('action') in ('store_false', 'store_true'):
+            type_ = bool
+        elif 'type' not in kwargs:
+            type_ = str
+        if kwargs.get('nargs') in ('*', '+'):
+            type_ = (list, type_)
+        self._argument_types[argument.dest] = type_
+
+        return argument
 
     def parse_args(self, *args, **kwargs):
         """Overwrite default values based on global configuration."""
@@ -137,9 +157,19 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
 
         defaults = {}
         destinations = self.get_destinations(recursive=False)
+        argument_types = self._get_argument_types()
         for key, dest in destinations.items():
             if key in data:
-                defaults[dest] = wrap_default_value(data[key])
+                value = data[key]
+                type_ = argument_types.get(dest)
+                if type_ is not None:
+                    # check if the value has the expected type
+                    try:
+                        self._check_argument_type(
+                            type_, value, key, parser_name)
+                    except TypeError:
+                        continue
+                defaults[dest] = wrap_default_value(value)
         unknown_keys = data.keys() - destinations.keys()
         if unknown_keys:
             unknown_keys_str = ', '.join(sorted(unknown_keys))
@@ -152,3 +182,44 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
                 "Setting default values for parser '{parser_name}': {defaults}"
                 .format_map(locals()))
             self._parser.set_defaults(**defaults)
+
+    def _get_argument_types(self):
+        argument_types = {}
+        argument_types.update(self._argument_types)
+        for d in self._group_decorators:
+            argument_types.update(d._argument_types)
+        return argument_types
+
+    def _check_argument_type(self, type_, value, key, parser_name):
+        if isinstance(type_, tuple) and type_[0] == list:
+            if not isinstance(value, list):
+                logger.warning(
+                    "Default value '{key}' for parser '{parser_name}' should "
+                    'be a list, not: {value}'.format_map(locals()))
+                raise TypeError()
+            # check type of each item in the list
+            if type_[1] == int and any(not isinstance(v, int) for v in value):
+                logger.warning(
+                    "Default value '{key}' for parser '{parser_name}' should "
+                    'be a list of integers, not: {value}'.format_map(locals()))
+                raise TypeError()
+            if type_[1] == str and any(not isinstance(v, str) for v in value):
+                logger.warning(
+                    "Default value '{key}' for parser '{parser_name}' should "
+                    'be a list of strings, not: {value}'.format_map(locals()))
+                raise TypeError()
+        if type_ == bool and not isinstance(value, bool):
+            logger.warning(
+                "Default value '{key}' for parser '{parser_name}' should be a "
+                'boolean, not: {value}'.format_map(locals()))
+            raise TypeError()
+        if type_ == int and not isinstance(value, int):
+            logger.warning(
+                "Default value '{key}' for parser '{parser_name}' should be "
+                'an integer, not: {value}'.format_map(locals()))
+            raise TypeError()
+        if type_ == str and not isinstance(value, str):
+            logger.warning(
+                "Default value '{key}' for parser '{parser_name}' should be a "
+                'string, not: {value}'.format_map(locals()))
+            raise TypeError()
