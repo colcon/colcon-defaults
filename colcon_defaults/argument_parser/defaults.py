@@ -53,6 +53,8 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
             _parsers={},
             _subparsers=[],
             _argument_types={},
+            _unique_types=set(),
+            _registered_types={},
         )
 
     def add_parser(self, *args, **kwargs):
@@ -86,6 +88,9 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
             type_ = (list, type_)
         self._argument_types[argument.dest] = type_
 
+        if kwargs.get('type') is not None:
+            self._unique_types.add(kwargs.get('type'))
+
         return argument
 
     def parse_args(self, *args, **kwargs):
@@ -101,8 +106,10 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
         collect_parsers_by_verb(self, all_parsers)
 
         # collect passed verbs to determine relevant configuration options
-        with SuppressUsageOutput([self._parser] + list(all_parsers.values())):
-            known_args, _ = self._parser.parse_known_args(*args, **kwargs)
+        parsers_to_suppress = [self._parser] + list(all_parsers.values())
+        with SuppressUsageOutput(parsers_to_suppress):
+            with _SuppressTypeConversions(parsers_to_suppress):
+                known_args, _ = self._parser.parse_known_args(*args, **kwargs)
 
         data = self._get_defaults_values(self._config_path)
 
@@ -127,6 +134,12 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
             parser._set_parser_defaults(data.get(key, {}), parser_name=key)
 
         return self._parser.parse_args(*args, **kwargs)
+
+    def register(self, *args, **kwargs):
+        """Register a method, such as a type conversion or action."""
+        if kwargs.get('registry_name', args[0]) == 'type':
+            self._registered_types[kwargs.get('value', args[1])] = kwargs.get(
+                'object', args[2])
 
     def _get_defaults_values(self, path):
         if not path.is_file():
@@ -223,3 +236,38 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
                 "Default value '{key}' for parser '{parser_name}' should be a "
                 'string, not: {value}'.format_map(locals()))
             raise TypeError()
+
+
+class _SuppressTypeConversions:
+    """
+    Context manager to suppress type conversions during `parse_known_args`.
+
+    This works only with parsers decorated with `_unique_types` or
+    `_registered_types`. It operates by registering a no-op conversion function
+    (`str()`) in place of the original conversion, then restores the original
+    conversion when exiting.
+    """
+
+    def __init__(self, parsers):
+        """
+        Construct a SuppressParseErrors.
+
+        :param parsers: The parsers
+        """
+        self._parsers = parsers
+        self._suppressed_types = {}
+
+    def __enter__(self):
+        for p in self._parsers:
+            self._suppressed_types[p] = {}
+            for t in getattr(p, '_unique_types', set()):
+                p._parser.register('type', t, str)
+                self._suppressed_types[p][t] = t
+            for v, o in getattr(p, '_registered_types', {}).items():
+                p._parser.register('type', v, str)
+                self._suppressed_types[p][v] = o
+
+    def __exit__(self, *args):
+        for p, types in self._suppressed_types.items():
+            for v, o in types.items():
+                p.register('type', v, o)
