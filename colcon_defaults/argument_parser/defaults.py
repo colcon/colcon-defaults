@@ -9,6 +9,8 @@ from colcon_core.argument_parser import ArgumentParserDecoratorExtensionPoint
 from colcon_core.argument_parser import SuppressUsageOutput
 from colcon_core.argument_parser.destination_collector \
     import DestinationCollectorDecorator
+from colcon_core.argument_parser.type_collector import SuppressTypeConversions
+from colcon_core.argument_parser.type_collector import TypeCollectorDecorator
 from colcon_core.environment_variable import EnvironmentVariable
 from colcon_core.location import get_config_path
 from colcon_core.logging import colcon_logger
@@ -39,7 +41,9 @@ class DefaultArgumentsArgumentParserDecorator(
         return DefaultArgumentsDecorator(parser)
 
 
-class DefaultArgumentsDecorator(DestinationCollectorDecorator):
+class DefaultArgumentsDecorator(
+    DestinationCollectorDecorator, TypeCollectorDecorator
+):
     """Provide custom default values for command line arguments."""
 
     def __init__(self, parser):  # noqa: D107
@@ -101,8 +105,10 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
         collect_parsers_by_verb(self, all_parsers)
 
         # collect passed verbs to determine relevant configuration options
-        with SuppressUsageOutput([self._parser] + list(all_parsers.values())):
-            known_args, _ = self._parser.parse_known_args(*args, **kwargs)
+        parsers_to_suppress = [self._parser] + list(all_parsers.values())
+        with SuppressUsageOutput(parsers_to_suppress):
+            with SuppressTypeConversions(parsers_to_suppress):
+                known_args, _ = self._parser.parse_known_args(*args, **kwargs)
 
         data = self._get_defaults_values(self._config_path)
 
