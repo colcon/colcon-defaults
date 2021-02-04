@@ -1,6 +1,7 @@
 # Copyright 2016-2020 Dirk Thomas
 # Licensed under the Apache License, Version 2.0
 
+import collections.abc
 import os
 from pathlib import Path
 
@@ -22,6 +23,22 @@ DEFAULTS_FILE_ENVIRONMENT_VARIABLE = EnvironmentVariable(
     'COLCON_DEFAULTS_FILE',
     'Set path to the yaml file containing the default values for the command '
     'line arguments (default: $COLCON_HOME/defaults.yaml)')
+
+
+def deep_update(source, overrides):
+    """
+    Update a nested dictionary or similar mapping.
+
+    Modifies ``source`` in place with values from ``overrides``. Taken from
+    https://stackoverflow.com/a/30655448
+    """
+    for key, value in overrides.items():
+        if isinstance(value, collections.abc.Mapping) and value:
+            returned = deep_update(source.get(key, {}), value)
+            source[key] = returned
+        else:
+            source[key] = overrides[key]
+    return source
 
 
 class DefaultArgumentsArgumentParserDecorator(
@@ -105,6 +122,25 @@ class DefaultArgumentsDecorator(DestinationCollectorDecorator):
             known_args, _ = self._parser.parse_known_args(*args, **kwargs)
 
         data = self._get_defaults_values(self._config_path)
+
+        # Additionally check for these potential config files local to the
+        # workspace. Warn and discard if multiple exist.
+        local_config_paths = [
+            Path('.colcon_defaults.yaml'),
+            Path('colcon_defaults.yaml'),
+            Path('.colcon/defaults.yaml'),
+        ]
+
+        local_config_files = [
+            path for path in local_config_paths if path.is_file()]
+        if len(local_config_files) > 1:
+            logger.warn(
+                'Ignoring local workspace defaults because multiple '
+                'potentially conflicting files are present ({})'.format(
+                    ', '.join(map(str, local_config_files))))
+        elif len(local_config_files) == 1:
+            # Merge local defaults with global defaults, possibly overwriting
+            deep_update(data, self._get_defaults_values(local_config_files[0]))
 
         # determine data keys and parsers for passed verbs (including the root)
         keys_and_parsers = []
