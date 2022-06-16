@@ -1,5 +1,6 @@
 apache
 colcon
+https
 iterdir
 lstrip
 nargs
@@ -9,6 +10,7 @@ plugin
 pytest
 scspell
 setuptools
+stackoverflow
 subparser
 subparsers
 thomas
