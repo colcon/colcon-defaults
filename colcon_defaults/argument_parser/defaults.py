@@ -1,6 +1,7 @@
 # Copyright 2016-2020 Dirk Thomas
 # Licensed under the Apache License, Version 2.0
 
+import collections.abc
 import os
 from pathlib import Path
 
@@ -28,6 +29,25 @@ DEFAULTS_FILE_ENVIRONMENT_VARIABLE = EnvironmentVariable(
     'COLCON_DEFAULTS_FILE',
     'Set path to the yaml file containing the default values for the command '
     'line arguments (default: $COLCON_HOME/defaults.yaml)')
+
+"""File with default values specific to the workspace."""
+WORKSPACE_DEFAULTS_FILE = 'colcon_defaults.yaml'
+
+
+def _deep_update(source, overrides):
+    """
+    Update a nested dictionary or similar mapping.
+
+    Modifies ``source`` in place with values from ``overrides``. Taken from
+    https://stackoverflow.com/a/30655448
+    """
+    for key, value in overrides.items():
+        if isinstance(value, collections.abc.Mapping) and value:
+            # If the map being overridden doesn't exist in source, create it
+            source.setdefault(key, {})
+            _deep_update(source[key], value)
+        else:
+            source[key] = overrides[key]
 
 
 class DefaultArgumentsArgumentParserDecorator(
@@ -117,6 +137,11 @@ class DefaultArgumentsDecorator(
                         *args, **kwargs)
 
         data = self._get_defaults_values(self._config_path)
+
+        # Merge local defaults with global defaults, possibly overwriting
+        local_defaults_path = Path(WORKSPACE_DEFAULTS_FILE)
+        local_data = self._get_defaults_values(local_defaults_path)
+        _deep_update(data, local_data)
 
         # determine data keys and parsers for passed verbs (including the root)
         keys_and_parsers = []
