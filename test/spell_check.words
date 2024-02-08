@@ -2,11 +2,13 @@ apache
 colcon
 https
 iterdir
+linter
 lstrip
 nargs
 noqa
 pathlib
 plugin
+pydocstyle
 pytest
 scspell
 setuptools
