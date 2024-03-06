@@ -170,7 +170,7 @@ class DefaultArgumentsDecorator(
             return {}
 
         content = path.read_text()
-        data = yaml.safe_load(content)
+        data = yaml.safe_load(os.path.expandvars(content))
         if data is None:
             logger.info(
                 "Empty metadata file '%s'" % path.absolute())
