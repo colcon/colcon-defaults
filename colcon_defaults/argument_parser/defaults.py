@@ -207,6 +207,8 @@ class DefaultArgumentsDecorator(
                     except TypeError:
                         continue
                 defaults[dest] = wrap_default_value(value)
+            if key == "packages-above-depth":
+                defaults[dest][0] = int(defaults[dest][0])
         unknown_keys = data.keys() - destinations.keys()
         if unknown_keys:
             unknown_keys_str = ', '.join(sorted(unknown_keys))
