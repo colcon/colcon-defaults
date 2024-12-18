@@ -108,6 +108,8 @@ class DefaultArgumentsDecorator(
             type_ = int
         elif kwargs.get('action') in ('store_false', 'store_true'):
             type_ = bool
+        elif callable(kwargs.get('action')):
+            type_ = None
         elif 'type' not in kwargs:
             type_ = str
         if kwargs.get('nargs') in ('*', '+'):
