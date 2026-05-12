@@ -5,7 +5,6 @@ import collections.abc
 import os
 from pathlib import Path
 
-from colcon_core.argument_default import wrap_default_value
 from colcon_core.argument_parser import ArgumentParserDecoratorExtensionPoint
 from colcon_core.argument_parser import SuppressUsageOutput
 from colcon_core.argument_parser.action_collector \
@@ -208,7 +207,7 @@ class DefaultArgumentsDecorator(
                             type_, value, key, parser_name)
                     except TypeError:
                         continue
-                defaults[dest] = wrap_default_value(value)
+                defaults[dest] = value
         unknown_keys = data.keys() - destinations.keys()
         if unknown_keys:
             unknown_keys_str = ', '.join(sorted(unknown_keys))
